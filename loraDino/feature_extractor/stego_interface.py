@@ -50,6 +50,19 @@ class StegoInterface:
         self._model.eval().to(device)
         self._device = device
 
+        # # freeze stego额外层的参数
+        # for param in self._model.segmentation_head.parameters():
+        #     param.requires_grad = False
+        # for param in self._model.cluster_probe.parameters():
+        #     param.requires_grad = False
+        # for param in self._model.linear_probe.parameters():
+        #     param.requires_grad = False
+        #
+        # # 查看哪些层会参与训练
+        # for name, param in self._model.named_parameters():
+        #     if param.requires_grad:
+        #         print(f"{name}: requires_grad={param.requires_grad}")
+
         # Colormap
         self._cmap = create_cityscapes_colormap()
 

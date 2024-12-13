@@ -1,5 +1,6 @@
 .idea/
 main_figure.jpg
 README.md
-jackal_img/
+jackal_img*
 tools/
+data/

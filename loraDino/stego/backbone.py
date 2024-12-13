@@ -136,18 +136,18 @@ class DinoViT(Backbone):
 
     def forward(self, img):
         self.model.eval()
-        with torch.no_grad():
-            assert img.shape[2] % self.patch_size == 0
-            assert img.shape[3] % self.patch_size == 0
+        # with torch.no_grad():
+        assert img.shape[2] % self.patch_size == 0
+        assert img.shape[3] % self.patch_size == 0
 
-            # get selected layer activations
-            feat, attn, qkv = self.model.get_intermediate_feat(img)
-            feat, attn, qkv = feat[0], attn[0], qkv[0]
+        # get selected layer activations
+        feat, attn, qkv = self.model.get_intermediate_feat(img)
+        feat, attn, qkv = feat[0], attn[0], qkv[0]
 
-            feat_h = img.shape[2] // self.patch_size
-            feat_w = img.shape[3] // self.patch_size
+        feat_h = img.shape[2] // self.patch_size
+        feat_w = img.shape[3] // self.patch_size
 
-            image_feat = feat[:, 1:, :].reshape(feat.shape[0], feat_h, feat_w, -1).permute(0, 3, 1, 2)
+        image_feat = feat[:, 1:, :].reshape(feat.shape[0], feat_h, feat_w, -1).permute(0, 3, 1, 2)
 
         if self.cfg.dropout_p > 0:
             return self.dropout(image_feat)

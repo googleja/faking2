@@ -40,13 +40,13 @@ class Stego(pl.LightningModule):
         self.cluster_probe = ClusterLookup(self.dim, self.n_classes + self.cfg.extra_clusters)
         self.linear_probe = nn.Conv2d(self.dim, n_classes, (1, 1))
 
-        self.cluster_metrics = UnsupervisedMetrics("test/cluster/", n_classes, self.cfg.extra_clusters, True)
-        self.linear_metrics = UnsupervisedMetrics("test/linear/", n_classes, 0, False)
+        # self.cluster_metrics = UnsupervisedMetrics("test/cluster/", n_classes, self.cfg.extra_clusters, True)
+        # self.linear_metrics = UnsupervisedMetrics("test/linear/", n_classes, 0, False)
 
-        self.linear_probe_loss_fn = torch.nn.CrossEntropyLoss()
-        self.contrastive_corr_loss_fn = ContrastiveCorrelationLoss(self.cfg)
-        for p in self.contrastive_corr_loss_fn.parameters():
-            p.requires_grad = False
+        # self.linear_probe_loss_fn = torch.nn.CrossEntropyLoss()
+        # self.contrastive_corr_loss_fn = ContrastiveCorrelationLoss(self.cfg)
+        # for p in self.contrastive_corr_loss_fn.parameters():
+        #     p.requires_grad = False
 
         self.crf = CRF(self.cfg)
 
@@ -74,12 +74,12 @@ class Stego(pl.LightningModule):
         self.linear_metrics = UnsupervisedMetrics("test/linear/", n_classes, 0, False)
         self.n_classes = n_classes
 
-    def configure_optimizers(self):
-        main_params = list(self.backbone.parameters()) + list(self.segmentation_head.parameters())
-        net_optim = torch.optim.Adam(main_params, lr=self.cfg.lr)
-        linear_probe_optim = torch.optim.Adam(list(self.linear_probe.parameters()), lr=self.cfg.linear_lr)
-        cluster_probe_optim = torch.optim.Adam(list(self.cluster_probe.parameters()), lr=self.cfg.cluster_lr)
-        return net_optim, linear_probe_optim, cluster_probe_optim
+    # def configure_optimizers(self):
+    #     main_params = list(self.backbone.parameters()) + list(self.segmentation_head.parameters())
+    #     net_optim = torch.optim.Adam(main_params, lr=self.cfg.lr)
+    #     linear_probe_optim = torch.optim.Adam(list(self.linear_probe.parameters()), lr=self.cfg.linear_lr)
+    #     cluster_probe_optim = torch.optim.Adam(list(self.cluster_probe.parameters()), lr=self.cfg.cluster_lr)
+    #     return net_optim, linear_probe_optim, cluster_probe_optim
 
     def forward(self, img):
         backbone_feats = self.backbone(img)
@@ -180,145 +180,145 @@ class Stego(pl.LightningModule):
         linear_preds = self.postprocess_linear(code, img, use_crf_linear)
         return cluster_preds, linear_preds
 
-    def training_step(self, batch, batch_idx):
-        net_optim, linear_probe_optim, cluster_probe_optim = self.optimizers()
-        net_optim.zero_grad()
-        linear_probe_optim.zero_grad()
-        cluster_probe_optim.zero_grad()
-        log_args = dict(sync_dist=False, rank_zero_only=True)
-
-        with torch.no_grad():
-            img = batch["img"]
-            img_pos = batch["img_pos"]
-            label = batch["label"]
-
-        feats, code = self.forward(img)
-        feats_pos, code_pos = self.forward(img_pos)
-
-        (
-            pos_intra_loss,
-            pos_intra_cd,
-            pos_inter_loss,
-            pos_inter_cd,
-            neg_inter_loss,
-            neg_inter_cd,
-        ) = self.contrastive_corr_loss_fn(
-            feats,
-            feats_pos,
-            code,
-            code_pos,
-        )
-        neg_inter_loss = neg_inter_loss.mean()
-        pos_intra_loss = pos_intra_loss.mean()
-        pos_inter_loss = pos_inter_loss.mean()
-
-        self.cd_hist = torch.add(self.cd_hist, torch.histc(pos_intra_cd.cpu(), bins=40, min=-1, max=1))
-        self.cd_hist = torch.add(self.cd_hist, torch.histc(pos_inter_cd.cpu(), bins=40, min=-1, max=1))
-        self.cd_hist = torch.add(self.cd_hist, torch.histc(neg_inter_cd.cpu(), bins=40, min=-1, max=1))
-
-        self.log("loss/pos_intra", pos_intra_loss)
-        self.log("loss/pos_inter", pos_inter_loss)
-        self.log("loss/neg_inter", neg_inter_loss)
-        self.log("cd/pos_intra", pos_intra_cd.mean())
-        self.log("cd/pos_inter", pos_inter_cd.mean())
-        self.log("cd/neg_inter", neg_inter_cd.mean())
-
-        loss = (
-            self.cfg.pos_inter_weight * pos_inter_loss
-            + self.cfg.pos_intra_weight * pos_intra_loss
-            + self.cfg.neg_inter_weight * neg_inter_loss
-        )
-
-        flat_label = label.reshape(-1)
-        mask = (flat_label >= 0) & (flat_label < self.n_classes)
-
-        detached_code = torch.clone(code.detach())
-
-        linear_logits = self.linear_probe(detached_code)
-        linear_logits = F.interpolate(linear_logits, label.shape[-2:], mode="bilinear", align_corners=False)
-        linear_logits = linear_logits.permute(0, 2, 3, 1).reshape(-1, self.n_classes)
-        linear_loss = self.linear_probe_loss_fn(linear_logits[mask], flat_label[mask]).mean()
-        loss += linear_loss
-        self.log("loss/linear", linear_loss, **log_args)
-
-        cluster_loss, cluster_probs = self.cluster_probe(detached_code, None)
-        loss += cluster_loss
-
-        self.log("loss/cluster", cluster_loss, **log_args)
-        self.log("loss/total", loss, **log_args)
-
-        self.manual_backward(loss)
-        net_optim.step()
-        cluster_probe_optim.step()
-        linear_probe_optim.step()
-
-        return loss
-
-    def validation_step(self, batch, batch_idx):
-        img = batch["img"]
-        label = batch["label"]
-
-        with torch.no_grad():
-            code = self.forward(img)[1]
-            code = F.interpolate(code, label.shape[-2:], mode="bilinear", align_corners=False)
-
-            linear_preds = self.linear_probe(code)
-            linear_preds = linear_preds.argmax(1)
-            self.linear_metrics.update(linear_preds, label)
-
-            cluster_loss, cluster_preds = self.cluster_probe(code, None)
-            cluster_preds = cluster_preds.argmax(1)
-            self.cluster_metrics.update(cluster_preds, label)
-
-            linear_metrics = self.linear_metrics.compute()
-            cluster_metrics = self.cluster_metrics.compute()
-
-            self.log("val/linear/mIoU", linear_metrics["test/linear/mIoU"])
-            self.log("val/linear/Accuracy", linear_metrics["test/linear/Accuracy"])
-            self.log("val/cluster/mIoU", cluster_metrics["test/cluster/mIoU"])
-            self.log("val/cluster/Accuracy", cluster_metrics["test/cluster/Accuracy"])
-
-            return {
-                "img": img[: self.cfg.val_n_imgs].detach().cpu(),
-                "linear_preds": linear_preds[: self.cfg.val_n_imgs].detach().cpu(),
-                "cluster_preds": cluster_preds[: self.cfg.val_n_imgs].detach().cpu(),
-                "label": label[: self.cfg.val_n_imgs].detach().cpu(),
-            }
-
-    def on_validation_epoch_end(self, outputs) -> None:
-        super().on_validation_epoch_end(outputs)
-        with torch.no_grad():
-            self.linear_metrics.reset()
-            self.cluster_metrics.reset()
-
-        for i in range(self.cfg.val_n_imgs):
-            img = outputs[0]["img"][i].cpu().numpy().transpose((1, 2, 0))
-            label = torch.squeeze(outputs[0]["label"][i]).cpu().numpy()
-            cluster = torch.squeeze(outputs[0]["cluster_preds"][i]).cpu().numpy()
-            linear = torch.squeeze(outputs[0]["linear_preds"][i]).cpu().numpy()
-            vis = wandb.Image(
-                img,
-                masks={
-                    "label": {"mask_data": label},
-                    "cluster": {"mask_data": cluster},
-                    "linear": {"mask_data": linear},
-                },
-                caption="Image" + str(i),
-            )
-            self.logger.experiment.log({"Image" + str(i): vis})
-
-        self.cd_hist = self.cd_hist / torch.sum(self.cd_hist)
-        x = [-1 + i * (2 / 40) + 1 / 40 for i in range(40)]
-        plt.figure()
-        ax = plt.axes()
-        ax.plot(x, self.cd_hist)
-        ax.set_xlim([-1, 1])
-        ax.set_ylim([0, 0.4])
-
-        img_buf = io.BytesIO()
-        plt.savefig(img_buf, format="png")
-        hist_img = Image.open(img_buf)
-        hist_vis = wandb.Image(hist_img, caption="Learned Feature Similarity Distribution")
-        self.logger.experiment.log({"Histogram": hist_vis})
-        img_buf.close()
-        self.cd_hist = torch.zeros(40)
+    # def training_step(self, batch, batch_idx):
+    #     net_optim, linear_probe_optim, cluster_probe_optim = self.optimizers()
+    #     net_optim.zero_grad()
+    #     linear_probe_optim.zero_grad()
+    #     cluster_probe_optim.zero_grad()
+    #     log_args = dict(sync_dist=False, rank_zero_only=True)
+    #
+    #     with torch.no_grad():
+    #         img = batch["img"]
+    #         img_pos = batch["img_pos"]
+    #         label = batch["label"]
+    #
+    #     feats, code = self.forward(img)
+    #     feats_pos, code_pos = self.forward(img_pos)
+    #
+    #     (
+    #         pos_intra_loss,
+    #         pos_intra_cd,
+    #         pos_inter_loss,
+    #         pos_inter_cd,
+    #         neg_inter_loss,
+    #         neg_inter_cd,
+    #     ) = self.contrastive_corr_loss_fn(
+    #         feats,
+    #         feats_pos,
+    #         code,
+    #         code_pos,
+    #     )
+    #     neg_inter_loss = neg_inter_loss.mean()
+    #     pos_intra_loss = pos_intra_loss.mean()
+    #     pos_inter_loss = pos_inter_loss.mean()
+    #
+    #     self.cd_hist = torch.add(self.cd_hist, torch.histc(pos_intra_cd.cpu(), bins=40, min=-1, max=1))
+    #     self.cd_hist = torch.add(self.cd_hist, torch.histc(pos_inter_cd.cpu(), bins=40, min=-1, max=1))
+    #     self.cd_hist = torch.add(self.cd_hist, torch.histc(neg_inter_cd.cpu(), bins=40, min=-1, max=1))
+    #
+    #     self.log("loss/pos_intra", pos_intra_loss)
+    #     self.log("loss/pos_inter", pos_inter_loss)
+    #     self.log("loss/neg_inter", neg_inter_loss)
+    #     self.log("cd/pos_intra", pos_intra_cd.mean())
+    #     self.log("cd/pos_inter", pos_inter_cd.mean())
+    #     self.log("cd/neg_inter", neg_inter_cd.mean())
+    #
+    #     loss = (
+    #         self.cfg.pos_inter_weight * pos_inter_loss
+    #         + self.cfg.pos_intra_weight * pos_intra_loss
+    #         + self.cfg.neg_inter_weight * neg_inter_loss
+    #     )
+    #
+    #     flat_label = label.reshape(-1)
+    #     mask = (flat_label >= 0) & (flat_label < self.n_classes)
+    #
+    #     detached_code = torch.clone(code.detach())
+    #
+    #     linear_logits = self.linear_probe(detached_code)
+    #     linear_logits = F.interpolate(linear_logits, label.shape[-2:], mode="bilinear", align_corners=False)
+    #     linear_logits = linear_logits.permute(0, 2, 3, 1).reshape(-1, self.n_classes)
+    #     linear_loss = self.linear_probe_loss_fn(linear_logits[mask], flat_label[mask]).mean()
+    #     loss += linear_loss
+    #     self.log("loss/linear", linear_loss, **log_args)
+    #
+    #     cluster_loss, cluster_probs = self.cluster_probe(detached_code, None)
+    #     loss += cluster_loss
+    #
+    #     self.log("loss/cluster", cluster_loss, **log_args)
+    #     self.log("loss/total", loss, **log_args)
+    #
+    #     self.manual_backward(loss)
+    #     net_optim.step()
+    #     cluster_probe_optim.step()
+    #     linear_probe_optim.step()
+    #
+    #     return loss
+    #
+    # def validation_step(self, batch, batch_idx):
+    #     img = batch["img"]
+    #     label = batch["label"]
+    #
+    #     with torch.no_grad():
+    #         code = self.forward(img)[1]
+    #         code = F.interpolate(code, label.shape[-2:], mode="bilinear", align_corners=False)
+    #
+    #         linear_preds = self.linear_probe(code)
+    #         linear_preds = linear_preds.argmax(1)
+    #         self.linear_metrics.update(linear_preds, label)
+    #
+    #         cluster_loss, cluster_preds = self.cluster_probe(code, None)
+    #         cluster_preds = cluster_preds.argmax(1)
+    #         self.cluster_metrics.update(cluster_preds, label)
+    #
+    #         linear_metrics = self.linear_metrics.compute()
+    #         cluster_metrics = self.cluster_metrics.compute()
+    #
+    #         self.log("val/linear/mIoU", linear_metrics["test/linear/mIoU"])
+    #         self.log("val/linear/Accuracy", linear_metrics["test/linear/Accuracy"])
+    #         self.log("val/cluster/mIoU", cluster_metrics["test/cluster/mIoU"])
+    #         self.log("val/cluster/Accuracy", cluster_metrics["test/cluster/Accuracy"])
+    #
+    #         return {
+    #             "img": img[: self.cfg.val_n_imgs].detach().cpu(),
+    #             "linear_preds": linear_preds[: self.cfg.val_n_imgs].detach().cpu(),
+    #             "cluster_preds": cluster_preds[: self.cfg.val_n_imgs].detach().cpu(),
+    #             "label": label[: self.cfg.val_n_imgs].detach().cpu(),
+    #         }
+    #
+    # def on_validation_epoch_end(self, outputs) -> None:
+    #     super().on_validation_epoch_end(outputs)
+    #     with torch.no_grad():
+    #         self.linear_metrics.reset()
+    #         self.cluster_metrics.reset()
+    #
+    #     for i in range(self.cfg.val_n_imgs):
+    #         img = outputs[0]["img"][i].cpu().numpy().transpose((1, 2, 0))
+    #         label = torch.squeeze(outputs[0]["label"][i]).cpu().numpy()
+    #         cluster = torch.squeeze(outputs[0]["cluster_preds"][i]).cpu().numpy()
+    #         linear = torch.squeeze(outputs[0]["linear_preds"][i]).cpu().numpy()
+    #         vis = wandb.Image(
+    #             img,
+    #             masks={
+    #                 "label": {"mask_data": label},
+    #                 "cluster": {"mask_data": cluster},
+    #                 "linear": {"mask_data": linear},
+    #             },
+    #             caption="Image" + str(i),
+    #         )
+    #         self.logger.experiment.log({"Image" + str(i): vis})
+    #
+    #     self.cd_hist = self.cd_hist / torch.sum(self.cd_hist)
+    #     x = [-1 + i * (2 / 40) + 1 / 40 for i in range(40)]
+    #     plt.figure()
+    #     ax = plt.axes()
+    #     ax.plot(x, self.cd_hist)
+    #     ax.set_xlim([-1, 1])
+    #     ax.set_ylim([0, 0.4])
+    #
+    #     img_buf = io.BytesIO()
+    #     plt.savefig(img_buf, format="png")
+    #     hist_img = Image.open(img_buf)
+    #     hist_vis = wandb.Image(hist_img, caption="Learned Feature Similarity Distribution")
+    #     self.logger.experiment.log({"Histogram": hist_vis})
+    #     img_buf.close()
+    #     self.cd_hist = torch.zeros(40)
