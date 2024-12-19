@@ -42,6 +42,7 @@ class FeatureExtractor:
             n_image_clusters=kwargs.get("n_image_clusters", 20),
             run_clustering=kwargs.get("run_clustering", True),
             run_crf=kwargs.get("run_crf", False),
+            model_path=kwargs.get("model_path", f"/home/jack/wvn/self_supervised_segmentation/models/zzy_refactor.ckpt"),
         )
 
         # Segmentation
