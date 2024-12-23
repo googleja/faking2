@@ -67,29 +67,37 @@ class DataBuffer:
         if len(self.positive_buffer) < batch_size:
             raise ValueError("Not enough positive data in buffer to sample")
 
-        query = random.sample(self.positive_buffer, batch_size)
-        positive_keys = random.sample(self.positive_buffer, batch_size)
+        query = torch.stack(random.sample(self.positive_buffer, batch_size))
+        positive_key = torch.stack(random.sample(self.positive_buffer, batch_size))
 
-        return query, positive_keys
+        return query, positive_key
 
-    def sample_negative(self, batch_size):
+    def sample_negative(self, size):
         """根据infoNCE，负样本要多采一些比较合适"""
-        if len(self.negative_buffer) < batch_size:
+        if len(self.negative_buffer) < size:
             raise ValueError("Not enough negative data in buffer to sample")
 
-        negative_keys = random.sample(self.negative_buffer, batch_size)
+        negative_key = torch.stack(random.sample(self.negative_buffer, size))
 
-        return negative_keys
+        return negative_key
 
     def size(self):
         return len(self.positive_buffer)
 
-    def is_ready(self, min_positive_size, min_negative_size):
+    def is_ready(self, min_positive_size=64, min_negative_size=128):
         """检查是否达到最小训练数据量"""
         return len(self.positive_buffer) >= min_positive_size and len(self.negative_buffer) >= min_negative_size
 
     def __len__(self):
         return len(self.positive_buffer)
+
+    def generate_data(self, feats, mask):
+        positive_indices = np.where(mask == 1)  # 掩膜为1的位置
+        negative_indices = np.where(mask == 0)  # 掩膜为0的位置
+        # 转置后形状为[num_positive, 90]和[num_negative, 90]
+        self.add_positive(feats[:, positive_indices[0], positive_indices[1]].T)
+        self.add_negative(feats[:, negative_indices[0], negative_indices[1]].T)
+        print(f"Positive buffer size: {len(self.positive_buffer)}, Negative buffer size: {len(self.negative_buffer)}")
 
 # class ContrastiveDataset(Dataset):
 #     """设置negatives的数量与positives一样"""

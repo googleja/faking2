@@ -10,6 +10,14 @@ from skimage.segmentation import mark_boundaries
 from PIL import Image
 import cv2
 from torchvision import transforms
+from torchvision import transforms as T
+
+
+def img_to_torch(img_path, device="cuda"):
+    img = cv2.imread(img_path)
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    to_tensor = T.ToTensor()
+    return to_tensor(img).to(device)
 
 
 class WvnFeatureExtractor:
@@ -24,6 +32,7 @@ class WvnFeatureExtractor:
             input_size=224,
             slic_num_components=50,
             model_path=f"/home/jack/wvn/self_supervised_segmentation/models/zzy_refactor.ckpt",
+            n_image_clusters=10,
         )
 
     def image_process(self, torch_image):
@@ -38,43 +47,61 @@ class WvnFeatureExtractor:
         return seg, linear_seg, seg_slic
 
 
+# def test_origin_stego_1():
+#     wvn = WvnFeatureExtractor()
+#     # dir = '/home/jack/wvn/jackal_img_backup/'
+#     dir = '/home/jack/wvn/SurgicalDINO/jackal_img/'
+#     for i in range(1, 107):
+#         try:
+#             img_dir = dir + str(i) + '_torch.pt'
+#             torch_image = torch.load(img_dir).to('cuda')
+#             seg, linear_seg, seg_slic = wvn.image_process(torch_image)
+#
+#             # save cluster seg
+#             color = cmap()
+#             seg_img = color[seg.cpu() % color.shape[0]]
+#             seg_img_pil = Image.fromarray((seg_img * 255).astype(np.uint8))
+#             seg_img_pil.save(dir + str(i) + "_cluster.png")
+#
+#             # save linear seg
+#             color = cmap()
+#             linear_seg_img = color[linear_seg.cpu()]
+#             linear_seg_img_pil =Image.fromarray((linear_seg_img * 255).astype(np.uint8))
+#             linear_seg_img_pil.save(dir + str(i) + "_linear.png")
+#
+#             # save slic seg
+#             np.save(dir + str(i) + "_slic.npy", seg_slic)
+#             np_img = (torch_image.permute(1, 2, 0) * 255).cpu().numpy().astype(np.uint8)
+#             boundaries = mark_boundaries(np_img, seg_slic, color=(0, 0, 1))
+#             boundaries_img = Image.fromarray((boundaries * 255).astype(np.uint8))
+#             boundaries_img.save(dir + str(i) + "_boundaries.png")
+#
+#         except Exception as e:
+#             print(e)
+#             break
+
+
 def test_origin_stego():
     wvn = WvnFeatureExtractor()
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    dir = '/home/jack/wvn/SurgicalDINO/data1219/image/trail-15_00361.png'
+    # dir = '/home/jack/wvn/jackal_img_backup/'
 
-    np_image = cv2.imread(dir)
-    if np_image is None:
-        raise FileNotFoundError(f"Image file '{dir}' not found.")
+    dir = '/home/jack/wvn/SurgicalDINO/data1219/image/'
+    torch_image = img_to_torch(dir + "trail-15_00361.png")
 
-    np_image = cv2.cvtColor(np_image, cv2.COLOR_BGR2RGB)
-    transform = transforms.ToTensor()
-    torch_image = transform(np_image).to(device)
-    try:
-        seg, linear_seg, seg_slic = wvn.image_process(torch_image)
+    seg, linear_seg, seg_slic = wvn.image_process(torch_image)
 
-        # save cluster seg
-        color = cmap()
-        seg_img = color[seg.cpu() % color.shape[0]]
-        seg_img_pil = Image.fromarray((seg_img * 255).astype(np.uint8))
-        seg_img_pil.save(dir + "_cluster.png")
+    # save cluster seg
+    color = cmap()
+    seg_img = color[seg.cpu() % color.shape[0]]
+    seg_img_pil = Image.fromarray((seg_img * 255).astype(np.uint8))
+    seg_img_pil.save(dir + "_cluster.png")
 
-        # save linear seg
-        color = cmap()
-        linear_seg_img = color[linear_seg.cpu()]
-        linear_seg_img_pil = Image.fromarray((linear_seg_img * 255).astype(np.uint8))
-        linear_seg_img_pil.save(dir + "_linear.png")
-
-        # # save slic seg
-        # np.save(dir + str(i) + "_slic.npy", seg_slic)
-        # np_img = (torch_image.permute(1, 2, 0) * 255).cpu().numpy().astype(np.uint8)
-        # boundaries = mark_boundaries(np_img, seg_slic, color=(0, 0, 1))
-        # boundaries_img = Image.fromarray((boundaries * 255).astype(np.uint8))
-        # boundaries_img.save(dir + str(i) + "_lora_boundaries.png")
-
-    except Exception as e:
-        print(e)
+    # save linear seg
+    color = cmap()
+    linear_seg_img = color[linear_seg.cpu()]
+    linear_seg_img_pil = Image.fromarray((linear_seg_img * 255).astype(np.uint8))
+    linear_seg_img_pil.save(dir + "_linear.png")
 
 
 if __name__ == "__main__":
-    test_origin_stego()
+    test_origin_stego_1()
