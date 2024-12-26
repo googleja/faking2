@@ -18,10 +18,10 @@ import numpy as np
 
 
 # logic:
-# 1、有一个img_buffer，用来存放1-2张图片或历史图片，就类似learning node的节点
-# 2、train就是从img buffer中选取img及对应mask
-# 3、根据mask生成正负样本，然后一次性feed进模型训练
-# 因为如果是存储正负样本，那训练的输入本身就带着梯度了，这不好处理
+# 1、有一个img_buffer，用来存放历史图片，就类似learning node的节点
+# 2、train就是从img buffer中选取img及对应mask（即make_batch）
+# 3、根据mask生成正负样本，然后一次性feed进模型训练（即batch_to_data）
+# 之所以存原图片而不是直接的像素正负样本，是因为如果存储处理后的政府样本，那训练的输入本身就带着梯度了，这不好处理
 
 
 def img_to_torch(img_path, device="cuda"):
@@ -67,8 +67,6 @@ class DINOWithLoRA(nn.Module):
 
         self.img_buffer = []
 
-        # self.buffer = DataBuffer(max_size=500)
-
         normalization = T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
         self._transform = T.Compose(
             [
@@ -85,10 +83,6 @@ class DINOWithLoRA(nn.Module):
         resized_img = self._transform(x).to(self.device)  # 1 3 224 224
         self._code = self._model.get_code(resized_img)
         return self._code
-
-    # def update_buffer(self, img, mask):
-    #     feats = self.forward(img)
-    #     self.buffer.generate_data(feats[0], mask)
 
     def make_batch(self, batch_size=8):
         img_dir = "/home/jack/wvn/SurgicalDINO/data1219/image/"

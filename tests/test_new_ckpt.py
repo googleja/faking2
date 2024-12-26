@@ -11,13 +11,7 @@ from PIL import Image
 import cv2
 from torchvision import transforms as T
 
-# 基本思路：
-# 1、它是多机位相机，所以使用了scheduler根据优先级选择当前应当处理哪一帧图像
-# 2、图像改为224x224，经由STEGO提取90维dense feature和segmentation mask
-# 3、将224x224x90的dense feature降采样到100个embeddings（也是用的STEGO） NOTE 实际好像没降到100
-# 4、输入到MLP中，得到traversability map。MLP由learning node在线训练
-
-# 也就是它的特征提取完全依赖DINO，分割依靠STEGO，并没有作任何训练，只是后续用MLP作训练来预测traversability map
+"""用来测试fine-tuned的ckpt，只需要修改model_path和n_image_clusters即可"""
 
 
 def img_to_torch(img_path, device="cuda"):

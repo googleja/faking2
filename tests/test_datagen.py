@@ -11,6 +11,10 @@ from collections import deque
 from torchvision import transforms as T
 
 
+"""这是当初为了测试有img buf后make batch以及bath to data的代码，
+目前已完全移植到loraDino/net_ft/train.py中"""
+
+
 def img_to_torch(img_path, device="cuda"):
     img = cv2.imread(img_path)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)

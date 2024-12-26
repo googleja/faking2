@@ -9,8 +9,11 @@ import traceback
 from skimage.segmentation import mark_boundaries
 from PIL import Image
 import cv2
-from torchvision import transforms
 from torchvision import transforms as T
+
+
+"""用来测试wvn最原始的ckpt，唯一区别在于我把它提供的ckpt refactor成了zzy_refactor.ckpt,
+同时修改了n_image_clusters，目的是让wvn暴露出分类错误的问题"""
 
 
 def img_to_torch(img_path, device="cuda"):
@@ -83,7 +86,6 @@ class WvnFeatureExtractor:
 
 def test_origin_stego():
     wvn = WvnFeatureExtractor()
-    # dir = '/home/jack/wvn/jackal_img_backup/'
 
     dir = '/home/jack/wvn/SurgicalDINO/data1219/image/'
     torch_image = img_to_torch(dir + "trail-15_00361.png")
@@ -104,4 +106,4 @@ def test_origin_stego():
 
 
 if __name__ == "__main__":
-    test_origin_stego_1()
+    test_origin_stego()

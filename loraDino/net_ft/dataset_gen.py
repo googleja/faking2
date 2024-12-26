@@ -10,6 +10,9 @@ import cv2
 from collections import deque
 
 
+"""目前已经完全弃用"""
+
+
 def extract_mask(annotation_path, img_path=None, target_range=((250, 20, 10), (255, 30, 20))):
     """
     根据指定颜色范围从注释图片中提取类别掩码。
